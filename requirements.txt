@@ -28,3 +28,17 @@ python-pptx
 wikipedia
 pymongo
 motor
+python-telegram-bot
+pypdf
+yt-dlp
+qrcode
+Pillow
+gTTS
+pyshorteners
+httpx
+flask
+pymupdf
+python-docx
+openpyxl
+python-pptx
+pdf2docx
