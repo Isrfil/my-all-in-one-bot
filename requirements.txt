@@ -1,4 +1,4 @@
-python-telegram-bot
+opython-telegram-bot
 pypdf
 yt-dlp
 qrcode
@@ -42,3 +42,16 @@ python-docx
 openpyxl
 python-pptx
 pdf2docx
+python-telegram-bot
+pypdf
+yt-dlp
+qrcode
+Pillow
+gTTS
+pyshorteners
+httpx
+flask
+pymupdf
+python-docx
+openpyxl
+python-pptx
