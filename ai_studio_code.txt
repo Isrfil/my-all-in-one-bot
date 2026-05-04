@@ -1,0 +1,9 @@
+python-telegram-bot
+pypdf
+yt-dlp
+qrcode
+Pillow
+gTTS
+pyshorteners
+httpx
+flask
