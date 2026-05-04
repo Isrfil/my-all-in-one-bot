@@ -7,3 +7,15 @@ gTTS
 pyshorteners
 httpx
 flask
+python-telegram-bot
+pypdf
+yt-dlp
+qrcode
+Pillow
+gTTS
+pyshorteners
+httpx
+flask
+pymupdf
+python-docx
+openpyxl
