@@ -1,154 +1,163 @@
-import os, asyncio, httpx, fitz, json, secrets, string, re, urllib.parse
-from PIL import Image, ImageFilter, ImageOps
-from gtts import gTTS
-from docx import Document
-from openpyxl import Workbook
-from pptx import Presentation
+import os, asyncio, httpx, json, secrets, string, re, time
+from datetime import datetime
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 from flask import Flask
 from threading import Thread
+from docx import Document
+from PIL import Image
 
 # --- কনফিগারেশন ---
 TOKEN = "8681613014:AAGhaxmwY5Xv_F1FDDyccUwIqT05WXUAQ3M"
-ADMIN_ID = 6365947320
 GEMINI_KEY = "AIzaSyBLMcfkOSvW1s-6dEQ14p_T__on6ZmlXWY"
+ADMIN_ID = 6365947320
+CHANNELS = ["@shantirahmana", "@extramaill", "@allfileconverter"]
 
-# --- ডাটাবেজ সিস্টেম ---
+# --- ডাটাবেজ ---
 DB_FILE = "database.json"
 def load_db():
-    if not os.path.exists(DB_FILE): return {"users": {}, "vip": [], "stats": {"files_processed": 0}}
+    if not os.path.exists(DB_FILE): return {"users": [], "vip": [], "stats": 0}
     with open(DB_FILE, "r") as f: return json.load(f)
 
 def save_db(db):
     with open(DB_FILE, "w") as f: json.dump(db, f, indent=4)
 
+# --- Force Join Check ---
+async def is_subscribed(bot, user_id):
+    for channel in CHANNELS:
+        try:
+            member = await bot.get_chat_member(chat_id=channel, user_id=user_id)
+            if member.status in ['left', 'kicked']: return False
+        except: return False # বট চ্যানেলে এডমিন না থাকলে এটি ফলস হবে
+    return True
+
 # --- কিবোর্ড মেনুসমূহ ---
 def main_menu():
     return ReplyKeyboardMarkup([
-        [KeyboardButton("🎬 Media Downloader"), KeyboardButton("📄 Office & PDF")],
-        [KeyboardButton("🖼 Image Advanced Tools"), KeyboardButton("🤖 AI Smart Assistant")],
-        [KeyboardButton("🛠 Utility & Converters"), KeyboardButton("⚙️ Admin Panel")],
-        [KeyboardButton("📊 Stats & VIP"), KeyboardButton("👤 Profile")]
+        [KeyboardButton("🎬 Media Downloader"), KeyboardButton("📄 PDF & Office")],
+        [KeyboardButton("📝 Resume Builder"), KeyboardButton("🖼 Image Tools")],
+        [KeyboardButton("🤖 AI Chat Assistant"), KeyboardButton("🛠 Utility Tools")],
+        [KeyboardButton("⚙️ Admin Panel"), KeyboardButton("👤 My Profile")]
     ], resize_keyboard=True)
 
-def image_adv_menu():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🖼 BG Remove", callback_data='img_rbg'), InlineKeyboardButton("🔍 Image to Text (OCR)", callback_data='img_ocr')],
-        [InlineKeyboardButton("🌫 Blur", callback_data='img_blur'), InlineKeyboardButton("✨ Sharpen", callback_data='img_sharp')],
-        [InlineKeyboardButton("✂️ Resize Social", callback_data='img_resize'), InlineKeyboardButton("🎭 Sketch", callback_data='img_sketch')]
-    ])
-
-def office_pdf_menu():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📝 Word Maker", callback_data='off_word'), InlineKeyboardButton("📊 Excel Sheet", callback_data='off_excel')],
-        [InlineKeyboardButton("🧾 Invoice Maker", callback_data='off_inv'), InlineKeyboardButton("📄 PDF to Word", callback_data='off_pdf2doc')],
-        [InlineKeyboardButton("📽 PPT Maker", callback_data='off_ppt'), InlineKeyboardButton("🔄 Rotate PDF", callback_data='off_pdfrot')]
-    ])
-
-def utility_menu():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("💱 Currency Converter", callback_data='ut_curr'), InlineKeyboardButton("📏 Unit Converter", callback_data='ut_unit')],
-        [InlineKeyboardButton("🔐 Password Gen", callback_data='ut_pass'), InlineKeyboardButton("🔗 URL Shortener", callback_data='ut_short')],
-        [InlineKeyboardButton("📝 Save Notes", callback_data='ut_notes'), InlineKeyboardButton("🗣 Text to Speech", callback_data='ut_tts')]
-    ])
-
-# --- এআই চ্যাট ফাংশন ---
-async def ai_chat(prompt):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    async with httpx.AsyncClient() as client:
-        try:
-            res = await client.post(url, json=payload, timeout=30)
-            return res.json()['candidates'][0]['content']['parts'][0]['text']
-        except: return "❌ AI ব্যস্ত আছে।"
-
-# --- কমান্ডস ---
+# --- স্টার্ট কমান্ড ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     db = load_db()
-    if str(user_id) not in db['users']:
-        db['users'][str(user_id)] = {"name": update.effective_user.first_name, "vip": False}
+    if user_id not in db['users']:
+        db['users'].append(user_id)
         save_db(db)
-    await update.message.reply_text("🚀 **Super Tool Bot V5.0 Active!**\nসব টুল এখন আপনার হাতের মুঠোয়।", reply_markup=main_menu())
+
+    # Force Join Check
+    if not await is_subscribed(context.bot, user_id):
+        btns = [[InlineKeyboardButton("📢 Join Channel 1", url="https://t.me/shantirahmana")],
+                [InlineKeyboardButton("📢 Join Channel 2", url="https://t.me/extramaill")],
+                [InlineKeyboardButton("📢 Join Channel 3", url="https://t.me/allfileconverter")],
+                [InlineKeyboardButton("✅ I have Joined", callback_data="check_subs")]]
+        await update.message.reply_text(
+            "❌ **অ্যাক্সেস ডিনাইড!**\nবটটি ব্যবহার করতে আমাদের ৩টি চ্যানেলে জয়েন থাকা বাধ্যতামূলক।",
+            reply_markup=InlineKeyboardMarkup(btns)
+        )
+        return
+
+    await update.message.reply_text(
+        f"🚀 **All File Converter-এ স্বাগতম!**\nআমি আপনার প্রফেশনাল মাল্টি-পারপাস বট।",
+        reply_markup=main_menu()
+    )
+
+# --- এডমিন প্যানেল ---
+async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID: return
+    db = load_db()
+    msg = f"⚙️ **Admin Panel**\n\n👥 মোট ইউজার: {len(db['users'])}\n🌟 ভিআইপি: {len(db['vip'])}\n\nব্রডকাস্ট করতে লিখুন: `/bc আপনার মেসেজ`"
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID: return
+    msg = " ".join(context.args)
+    db = load_db()
+    count = 0
+    for user in db['users']:
+        try:
+            await context.bot.send_message(chat_id=user, text=f"📢 **Admin Message:**\n\n{msg}")
+            count += 1
+        except: pass
+    await update.message.reply_text(f"✅ {count} জন ইউজারকে মেসেজ পাঠানো হয়েছে।")
+
+# --- Resume Builder (Step-by-Step) ---
+async def resume_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['state'] = 'CV_NAME'
+    await update.message.reply_text("📝 **Resume Builder শুরু হয়েছে!**\nআপনার পূর্ণ নাম লিখুন:")
+
+async def handle_cv(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    state = context.user_data.get('state')
+    text = update.message.text
+
+    if state == 'CV_NAME':
+        context.user_data['cv_name'] = text
+        context.user_data['state'] = 'CV_SKILLS'
+        await update.message.reply_text("✅ আপনার স্কিলগুলো লিখুন (যেমন: Python, Graphic Design):")
+    
+    elif state == 'CV_SKILLS':
+        context.user_data['cv_skills'] = text
+        context.user_data['state'] = 'CV_EXP'
+        await update.message.reply_text("✅ আপনার কাজের অভিজ্ঞতা বা শিক্ষা সম্পর্কে লিখুন:")
+
+    elif state == 'CV_EXP':
+        # Resume তৈরি করা
+        name = context.user_data['cv_name']
+        skills = context.user_data['cv_skills']
+        exp = text
+        
+        doc = Document()
+        doc.add_heading(f'Resume of {name}', 0)
+        doc.add_heading('Skills:', level=1)
+        doc.add_paragraph(skills)
+        doc.add_heading('Experience & Education:', level=1)
+        doc.add_paragraph(exp)
+        
+        path = f"resume_{update.effective_user.id}.docx"
+        doc.save(path)
+        await update.message.reply_document(document=open(path, 'rb'), caption="✅ আপনার প্রফেশনাল রেজ্যুমে তৈরি!")
+        os.remove(path)
+        context.user_data.clear()
 
 # --- মূল মেসেজ হ্যান্ডলার ---
 async def handle_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     user_id = update.effective_user.id
-    
-    # বাটন ক্লিক করলে রিসেট
-    main_btns = ["🎬 Media Downloader", "📄 Office & PDF", "🖼 Image Advanced Tools", "🤖 AI Smart Assistant", "🛠 Utility & Converters", "⚙️ Admin Panel", "📊 Stats & VIP", "👤 Profile"]
-    if text in main_btns: context.user_data.clear()
 
-    if text == "🤖 AI Smart Assistant":
-        context.user_data['state'] = 'AI_CHAT'
-        await update.message.reply_text("🤖 আমি আপনার স্মার্ট অ্যাসিস্ট্যান্ট। কি সাহায্য করতে পারি?")
+    # বাটন লজিক
+    if text == "📝 Resume Builder":
+        await resume_start(update, context)
+        return
     
+    elif text == "⚙️ Admin Panel":
+        await admin_panel(update, context)
+        return
+
     elif text == "🎬 Media Downloader":
         await update.message.reply_text("🎬 ভিডিওর লিংক দিন (YT/FB/IG/TikTok)।")
-    
-    elif text == "📄 Office & PDF":
-        await update.message.reply_text("📂 অফিস টুলস সিলেক্ট করুন:", reply_markup=office_pdf_menu())
-        
-    elif text == "🖼 Image Advanced Tools":
-        await update.message.reply_text("🖼 ছবি পাঠান এবং নিচের টুলস ব্যবহার করুন:", reply_markup=image_adv_menu())
+        return
 
-    elif text == "🛠 Utility & Converters":
-        await update.message.reply_text("🛠 ইউটিলিটি মেনু:", reply_markup=utility_menu())
-
-    elif text == "⚙️ Admin Panel" and user_id == ADMIN_ID:
-        await update.message.reply_text("⚙️ **Admin Panel**\n/broadcast - মেসেজ পাঠান\n/stats - ইউজার লিস্ট")
-
-    elif text == "👤 Profile":
-        db = load_db()
-        status = "🌟 VIP" if str(user_id) in db['vip'] else "🆓 Free"
-        await update.message.reply_text(f"👤 নাম: {update.effective_user.first_name}\n🆔 আইডি: `{user_id}`\n🚀 স্ট্যাটাস: {status}", parse_mode="Markdown")
-
-    # --- এআই চ্যাট লজিক ---
-    state = context.user_data.get('state')
-    if state == 'AI_CHAT':
-        msg = await update.message.reply_text("🤔")
-        ans = await ai_chat(text)
-        await msg.edit_text(ans)
-    
-    # --- লিংক ডিটেক্টর ---
-    elif text.startswith("http"):
-        context.user_data['url'] = text
-        btns = [[InlineKeyboardButton("🎥 High Quality", callback_data='dl_v_high'), InlineKeyboardButton("🎞 Low Quality", callback_data='dl_v_low')],
-                [InlineKeyboardButton("🎵 Audio MP3", callback_data='dl_a')]]
-        await update.message.reply_text("🔗 লিংক পাওয়া গেছে! কোয়ালিটি বেছে নিন:", reply_markup=InlineKeyboardMarkup(btns))
-
-# --- বাটন ক্লিক একশন ---
-async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query; data = query.data; user_id = query.from_user.id
-    await query.answer()
-
-    if data == 'ut_pass':
-        pwd = ''.join(secrets.choice(string.ascii_letters + string.digits) for i in range(12))
-        await query.message.reply_text(f"🔐 আপনার পাসওয়ার্ড: `{pwd}`")
-
-    elif data == 'ut_curr':
-        await query.message.reply_text("💱 বর্তমান রেট: 1 USD = 118.50 BDT")
-
-    elif data == 'off_word':
-        context.user_data['state'] = 'WAIT_WORD'
-        await query.message.reply_text("📝 ওয়ার্ড ফাইলের জন্য টেক্সট পাঠান:")
-
-    elif data == 'img_sketch':
-        await query.message.reply_text("🎨 ছবি পাঠান, আমি স্কেচ করে দিচ্ছি।")
+    # Resume Builder এর স্টেট চেক
+    if context.user_data.get('state', '').startswith('CV_'):
+        await handle_cv(update, context)
+        return
 
 # --- Flask Server ---
 app_web = Flask('')
 @app_web.route('/')
-def home(): return "Super Bot V5.0 is Running"
+def home(): return "All File Converter is Active!"
 def keep_alive(): Thread(target=lambda: app_web.run(host='0.0.0.0', port=8080)).start()
 
 if __name__ == '__main__':
     keep_alive()
     app = ApplicationBuilder().token(TOKEN).build()
+    
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("bc", broadcast))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_all))
-    app.add_handler(CallbackQueryHandler(callback_handler))
-    print("🚀 বট সফলভাবে সব ফিচারের সাথে চালু হয়েছে!")
+    
+    print("🚀 All File Converter Bot Is LIVE!")
     app.run_polling()
